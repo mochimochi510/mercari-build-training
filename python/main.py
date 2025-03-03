@@ -2,12 +2,13 @@ import os
 import logging
 import pathlib
 import json
-from fastapi import FastAPI, Form, HTTPException, Depends
+from fastapi import FastAPI, Form, HTTPException, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import hashlib
 
 
 # Define the path to the images & sqlite3 database
@@ -71,12 +72,17 @@ class AddItemResponse(BaseModel):
 def add_item(
     name: str = Form(...),
     category: str = Form(...),
+    image: UploadFile = File(...),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    file_data = image.file.read()
+    # Calculate the SHA-256 hash of the file
+    hashed_value = hashlib.sha256(file_data).hexdigest()
+    
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    insert_item(Item(name=name, category=category))
+    insert_item(Item(name=name, category=category, image=hashed_value))
     return AddItemResponse(**{"message": f"item received: {name}"})
 
 # get_item is a handler to get all items for GET /items .
@@ -90,8 +96,17 @@ async def get_items():
         data = []
         pass
     return data 
-    
 
+@app.get("/items/{item_id}")
+async def get_item(item_id: int):
+    path_to_jsonfile = 'items.json'
+    try:
+        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = []
+        pass
+    return data['items'][item_id-1]
 
 # get_image is a handler to return an image for GET /images/{filename} .
 @app.get("/image/{image_name}")
@@ -111,8 +126,8 @@ async def get_image(image_name):
 
 class Item(BaseModel):
     name: str
-    category: str   
-
+    category: str 
+    image: str  
 
 
 def insert_item(item: Item):
@@ -123,7 +138,7 @@ def insert_item(item: Item):
         with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
             data = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
-        data = []
+        data = {'items': []} 
         pass
 
     # データに新たなitemを追加
