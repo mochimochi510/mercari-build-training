@@ -20,7 +20,7 @@ def get_db():
     if not db.exists():
         yield
 
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(db, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     try:
         yield conn
@@ -128,6 +128,15 @@ async def get_image(image_name):
         image = images / "default.jpg"
 
     return FileResponse(image)
+
+# step5-2
+@app.get("/search")
+async def search_items(keyword: str, db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    query = "SELECT * FROM items WHERE name LIKE ? OR category LIKE ?"
+    cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
+    items = cursor.fetchall()
+    return [dict(item) for item in items]
 
 
 class Item(BaseModel):
