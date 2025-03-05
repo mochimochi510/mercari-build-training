@@ -80,7 +80,7 @@ class AddItemResponse(BaseModel):
 @app.post("/items", response_model=AddItemResponse)
 def add_item(
     name: str = Form(...),
-    category: str = Form(...),
+    category_id: int = Form(...),
     image: UploadFile = File(...),
     db: sqlite3.Connection = Depends(get_db),
 ):
@@ -91,14 +91,19 @@ def add_item(
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    insert_item(Item(name=name, category=category, image=hashed_value), db)
+    insert_item(Item(name=name, category_id=category_id, image=hashed_value), db)
     return AddItemResponse(**{"message": f"item received: {name}"})
 
 # get_item is a handler to get all items for GET /items .
 @app.get("/items")
 async def get_items(db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM items")
+    query = """
+    SELECT items.id, items.name, categories.name as category, items.image
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    """
+    cursor.execute(query)
     items = cursor.fetchall()
     return [dict(item) for item in items]
 
@@ -133,15 +138,39 @@ async def get_image(image_name):
 @app.get("/search")
 async def search_items(keyword: str, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.cursor()
-    query = "SELECT * FROM items WHERE name LIKE ? OR category LIKE ?"
+    query = """
+    SELECT items.id, items.name, categories.name as category, items.image
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    WHERE items.name LIKE ? OR categories.name LIKE ?
+    """
     cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
     items = cursor.fetchall()
     return [dict(item) for item in items]
 
 
+# step5-3
+class AddCategoryResponse(BaseModel):
+    message: str
+
+
+@app.post("/categories", response_model=AddCategoryResponse)
+def add_category(
+    name: str = Form(...),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO categories (name) VALUES (?)",
+        (name,)
+    )
+    db.commit()
+    return AddCategoryResponse(**{"message": f"category received: {name}"})
+
+
 class Item(BaseModel):
     name: str
-    category: str 
+    category_id: int 
     image: str  
 
 
@@ -149,7 +178,7 @@ def insert_item(item: Item, db: sqlite3.Connection):
     # STEP 5-1: add an implementation to store an item
     cursor = db.cursor()
     cursor.execute(
-        "INSERT INTO items (name, category, image) VALUES (?, ?, ?)",
-        (item.name, item.category, item.image)
+        "INSERT INTO items (name, category_id, image) VALUES (?, ?, ?)",
+        (item.name, item.category_id, item.image)
     )
     db.commit()
