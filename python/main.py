@@ -82,6 +82,11 @@ def add_item(
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
+    # Save the image to the images directory
+    image_path = images / f"{hashed_value}.jpg"
+    with open(image_path, "wb") as f:
+        f.write(file_data)
+
     insert_item(Item(name=name, category=category, image=hashed_value))
     return AddItemResponse(**{"message": f"item received: {name}"})
 
