@@ -91,7 +91,14 @@ def add_item(
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    insert_item(Item(name=name, category_id=category_id, image=hashed_value), db)
+
+    # Save the image to the images directory
+    image_path = images / f"{hashed_value}.jpg"
+    with open(image_path, "wb") as f:
+        f.write(file_data)
+
+    insert_item(Item(name=name, category=category_id, image=hashed_value), db)
+
     return AddItemResponse(**{"message": f"item received: {name}"})
 
 # get_item is a handler to get all items for GET /items .
