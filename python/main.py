@@ -97,7 +97,7 @@ def add_item(
     with open(image_path, "wb") as f:
         f.write(file_data)
 
-    insert_item(Item(name=name, category=category_id, image=hashed_value), db)
+    insert_item(Item(name=name, category_id=category_id, image=hashed_value), db)
 
     return AddItemResponse(**{"message": f"item received: {name}"})
 
