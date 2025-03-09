@@ -27,7 +27,8 @@ def db_connection():
         """CREATE TABLE IF NOT EXISTS items (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name VARCHAR(255),
-		category VARCHAR(255)
+		category_id VARCHAR(255),
+        image TEXT
 	)"""
     )
     conn.commit()
@@ -64,13 +65,13 @@ def test_hello(want_status_code, want_body):
 @pytest.mark.parametrize(
     # 引数をmain.pyのhello関数の引数に合わせて変更しました
     "args, image, want_status_code",
-    [   # pass
+    [   # success, 想定通り200が返る
         (
             {"name": "used iPhone 16e", "category_id": "1"}, 
             {"image": ("default.jpg", open("images/default.jpg", "rb"))}, 
             200
          ),
-        # fail
+        # Name is empty, 想定通り400エラーが返る
         (
             {"name":"", "category_id":"1"},
             {"image" : ("default.jpg", open("images/default.jpg", "rb"))},
