@@ -20,7 +20,7 @@ def get_db():
     if not db.exists():
         yield
 
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(db, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     try:
         yield conn
@@ -30,6 +30,15 @@ def get_db():
 
 # STEP 5-1: set up the database connection
 def setup_database():
+    conn = sqlite3.connect(db)
+    try:
+        cursor = conn.cursor()
+        with open(pathlib.Path(__file__).parent.resolve() / "db" / "items.sql", "r", encoding="utf-8") as sql_file:
+            sql_script = sql_file.read()
+        cursor.executescript(sql_script)
+        conn.commit()
+    finally:
+        conn.close()
     pass
 
 
@@ -71,7 +80,7 @@ class AddItemResponse(BaseModel):
 @app.post("/items", response_model=AddItemResponse)
 def add_item(
     name: str = Form(...),
-    category: str = Form(...),
+    category_id: int = Form(...),
     image: UploadFile = File(...),
     db: sqlite3.Connection = Depends(get_db),
 ):
@@ -82,25 +91,29 @@ def add_item(
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
+
     # Save the image to the images directory
     image_path = images / f"{hashed_value}.jpg"
     with open(image_path, "wb") as f:
         f.write(file_data)
 
-    insert_item(Item(name=name, category=category, image=hashed_value))
+    insert_item(Item(name=name, category_id=category_id, image=hashed_value), db)
+
     return AddItemResponse(**{"message": f"item received: {name}"})
 
 # get_item is a handler to get all items for GET /items .
 @app.get("/items")
-async def get_items():
-    path_to_jsonfile = 'items.json'
-    try:    
-        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = []
-        pass
-    return data 
+async def get_items(db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    query = """
+    SELECT items.id, items.name, categories.name as category, items.image
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    """
+    cursor.execute(query)
+    items = cursor.fetchall()
+    return [dict(item) for item in items]
+
 
 @app.get("/items/{item_id}")
 async def get_item(item_id: int):
@@ -128,29 +141,51 @@ async def get_image(image_name):
 
     return FileResponse(image)
 
+# step5-2
+@app.get("/search")
+async def search_items(keyword: str, db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.cursor()
+    query = """
+    SELECT items.id, items.name, categories.name as category, items.image
+    FROM items
+    JOIN categories ON items.category_id = categories.id
+    WHERE items.name LIKE ? OR categories.name LIKE ?
+    """
+    cursor.execute(query, (f"%{keyword}%", f"%{keyword}%"))
+    items = cursor.fetchall()
+    return [dict(item) for item in items]
+
+
+# step5-3
+class AddCategoryResponse(BaseModel):
+    message: str
+
+
+@app.post("/categories", response_model=AddCategoryResponse)
+def add_category(
+    name: str = Form(...),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO categories (name) VALUES (?)",
+        (name,)
+    )
+    db.commit()
+    return AddCategoryResponse(**{"message": f"category received: {name}"})
+
 
 class Item(BaseModel):
     name: str
-    category: str 
+    category_id: int 
     image: str  
 
 
-def insert_item(item: Item):
-    # STEP 4-1: add an implementation to store an item
-    try:
-        # 既存のJSONデータを読み込む
-        path_to_jsonfile = 'items.json'
-        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {'items': []} 
-        pass
-
-    # データに新たなitemを追加
-    if not any(existing_item == item.dict() for existing_item in data):
-        data['items'].append(item.dict())
-        print('item added')
-
-    # データをjsonファイルに書き込む
-    with open(path_to_jsonfile, 'w', encoding='utf-8') as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
+def insert_item(item: Item, db: sqlite3.Connection):
+    # STEP 5-1: add an implementation to store an item
+    cursor = db.cursor()
+    cursor.execute(
+        "INSERT INTO items (name, category_id, image) VALUES (?, ?, ?)",
+        (item.name, item.category_id, item.image)
+    )
+    db.commit()
