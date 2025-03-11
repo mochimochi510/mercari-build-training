@@ -1,12 +1,14 @@
 import os
 import logging
 import pathlib
-from fastapi import FastAPI, Form, HTTPException, Depends
+import json
+from fastapi import FastAPI, Form, HTTPException, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import hashlib
 
 
 # Define the path to the images & sqlite3 database
@@ -69,14 +71,47 @@ class AddItemResponse(BaseModel):
 @app.post("/items", response_model=AddItemResponse)
 def add_item(
     name: str = Form(...),
+    category: str = Form(...),
+    image: UploadFile = File(...),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    file_data = image.file.read()
+    # Calculate the SHA-256 hash of the file
+    hashed_value = hashlib.sha256(file_data).hexdigest()
+    
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
-    insert_item(Item(name=name))
+    # Save the image to the images directory
+    image_path = images / f"{hashed_value}.jpg"
+    with open(image_path, "wb") as f:
+        f.write(file_data)
+
+    insert_item(Item(name=name, category=category, image=hashed_value))
     return AddItemResponse(**{"message": f"item received: {name}"})
 
+# get_item is a handler to get all items for GET /items .
+@app.get("/items")
+async def get_items():
+    path_to_jsonfile = 'items.json'
+    try:    
+        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = []
+        pass
+    return data 
+
+@app.get("/items/{item_id}")
+async def get_item(item_id: int):
+    path_to_jsonfile = 'items.json'
+    try:
+        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = []
+        pass
+    return data['items'][item_id-1]
 
 # get_image is a handler to return an image for GET /images/{filename} .
 @app.get("/image/{image_name}")
@@ -96,8 +131,26 @@ async def get_image(image_name):
 
 class Item(BaseModel):
     name: str
+    category: str 
+    image: str  
 
 
 def insert_item(item: Item):
     # STEP 4-1: add an implementation to store an item
-    pass
+    try:
+        # 既存のJSONデータを読み込む
+        path_to_jsonfile = 'items.json'
+        with open(path_to_jsonfile, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {'items': []} 
+        pass
+
+    # データに新たなitemを追加
+    if not any(existing_item == item.dict() for existing_item in data):
+        data['items'].append(item.dict())
+        print('item added')
+
+    # データをjsonファイルに書き込む
+    with open(path_to_jsonfile, 'w', encoding='utf-8') as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
