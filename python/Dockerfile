@@ -20,8 +20,6 @@ COPY . /app
 # Change ownership of the application directory
 RUN chown -R trainee:mercari /app
 
-RUN chown -R trainee:mercari /app/python/db
-
 USER trainee
 
 # Expose the port the app runs on
