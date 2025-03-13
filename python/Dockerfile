@@ -20,7 +20,7 @@ COPY . /app
 # Change ownership of the application directory
 RUN chown -R trainee:mercari /app
 
-RUN chown -R trainee:mercari /path/to/db
+RUN chown -R trainee:mercari /app/python/db
 
 USER trainee
 
