@@ -1,6 +1,7 @@
 FROM python:3.9-alpine
 
-RUN addgroup -S mercari && adduser -S trainee -G mercari
+RUN addgroup -S mercari 
+RUN adduser -S trainee -G mercari
 
 # Set the working directory
 WORKDIR /app
@@ -19,8 +20,6 @@ COPY . /app
 
 # Change ownership of the application directory
 RUN chown -R trainee:mercari /app
-
-RUN chown -R trainee:mercari /path/to/db
 
 USER trainee
 
